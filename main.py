@@ -25,33 +25,38 @@ def main():
         shutil.rmtree(save_dir)
     os.makedirs(save_dir)
 
-    # 3. Wordとリンク資料をコピー
+    # 3. Wordとリンク資料フォルダをまるごとコピー
     target_word_path = os.path.join(save_dir, original_word_name)
     shutil.copy2(os.path.join(input_dir, original_word_name), target_word_path)
     
-    # linkフォルダの中身を丸ごとコピー（階層維持）
-    link_items = os.listdir(link_source_dir)
     link_data = []
-    for item in link_items:
-        src_path = os.path.join(link_source_dir, item)
-        dst_path = os.path.join(save_dir, item)
-        if os.path.isdir(src_path):
-            shutil.copytree(src_path, dst_path)
-            # フォルダ内の全ファイルをリンク対象としてスキャン
-            for root, _, files in os.walk(dst_path):
-                for file in files:
-                    if file.startswith('.'): continue
-                    file_no_ext = os.path.splitext(file)[0]
-                    rel_path = os.path.relpath(os.path.join(root, file), save_dir).replace("\\", "/")
-                    link_data.append((file_no_ext, rel_path))
-        else:
-            shutil.copy2(src_path, dst_path)
-            file_no_ext = os.path.splitext(item)[0]
-            link_data.append((file_no_ext, item))
+    # linkフォルダの中身（01参考資料など）をループで処理
+    if os.path.exists(link_source_dir):
+        items = os.listdir(link_source_dir)
+        for item in items:
+            if item.startswith('.'): continue
+            src_path = os.path.join(link_source_dir, item)
+            dst_path = os.path.join(save_dir, item)
+            
+            if os.path.isdir(src_path):
+                shutil.copytree(src_path, dst_path)
+                # ★ここが重要：フォルダの中を再帰的にスキャンしてファイルを探す
+                for root, _, files in os.walk(dst_path):
+                    for file in files:
+                        if file.startswith('.'): continue
+                        # 拡張子を除いた名前（例：会場レイアウト）を取得
+                        file_no_ext = os.path.splitext(file)[0]
+                        # Wordから見た相対パスを作成
+                        rel_path = os.path.relpath(os.path.join(root, file), save_dir).replace("\\", "/")
+                        link_data.append((file_no_ext, rel_path))
+            else:
+                shutil.copy2(src_path, dst_path)
+                file_no_ext = os.path.splitext(item)[0]
+                link_data.append((file_no_ext, item))
 
-    # 4. OS別のWord操作
+    # 4. OS別のWord操作（AppleScriptでリンク付与）
     os_name = platform.system()
-    if os_name == "Darwin": # Mac
+    if os_name == "Darwin":
         applescript = f'''
         tell application "Microsoft Word"
             open POSIX file "{os.path.abspath(target_word_path)}"
@@ -73,6 +78,7 @@ def main():
         applescript += 'save doc\nclose doc\nend tell'
         subprocess.run(["osascript", "-e", applescript])
     
+    # Windows版も同様のロジックで対応
     elif os_name == "Windows":
         import win32com.client
         word_app = win32com.client.Dispatch("Word.Application")
